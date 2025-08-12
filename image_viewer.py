@@ -116,6 +116,18 @@ class PygameImageViewer:
         pygame.init()
         pygame.display.set_caption("AI Art Box Viewer (Pygame)")
         self.screen = pygame.display.set_mode((self.window_width, self.window_height), pygame.RESIZABLE)
+        
+        # Set custom window icon
+        try:
+            icon_path = get_resource_path("AI_Art_Box_Viewer.icns")
+            if icon_path.exists():
+                # For .icns files, we need to convert to a format pygame can use
+                # Let's create a simple icon from the icon generation script
+                icon_surface = self._create_icon_surface()
+                pygame.display.set_icon(icon_surface)
+        except Exception as e:
+            print(f"Could not set custom icon: {e}", file=sys.stderr)
+        
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 32)
 
@@ -139,6 +151,30 @@ class PygameImageViewer:
             mapping[getattr(pygame, f"K_{char}")] = (2, value)
 
         return mapping
+
+    def _create_icon_surface(self) -> pygame.Surface:
+        """Create a pygame surface for the window icon from the custom icon"""
+        try:
+            # Try to load the custom icon file
+            icon_path = get_resource_path("Mac App Icon.png")
+            if icon_path.exists():
+                # Load the original PNG and scale it down
+                icon_size = 32
+                original_surface = pygame.image.load(str(icon_path))
+                scaled_surface = pygame.transform.scale(original_surface, (icon_size, icon_size))
+                return scaled_surface
+        except Exception as e:
+            print(f"Could not load custom icon: {e}")
+        
+        # Fallback: create a simple icon
+        icon_size = 32
+        surface = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+        surface.fill((40, 44, 52, 255))
+        border_width = 1
+        pygame.draw.rect(surface, (100, 150, 255, 255), 
+                        (border_width, border_width, icon_size - 2*border_width, icon_size - 2*border_width), 
+                        border_width)
+        return surface
 
     def _current_filename(self) -> str:
         return f"{self.first_digit}-{self.second_digit}-{self.third_digit}.png"
@@ -242,12 +278,26 @@ class PygameImageViewer:
         pygame.quit()
 
 
+def get_resource_path(relative_path: str) -> Path:
+    """Get the absolute path to a resource file, works for both development and bundled app"""
+    if hasattr(sys, '_MEIPASS'):
+        # Running in a bundled app (PyInstaller)
+        return Path(sys._MEIPASS) / relative_path
+    elif hasattr(sys, 'frozen'):
+        # Running in a bundled app (py2app)
+        # sys.executable points to the MacOS binary, so we need to go up to Resources
+        bundle_dir = Path(sys.executable).parent.parent / 'Resources'
+        return bundle_dir / relative_path
+    else:
+        # Running in development
+        return Path(__file__).parent / relative_path
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pygame viewer for 'd0-d1-d2.png' images with QWERTY/ASDFGH/ZXCVBN controls.")
     parser.add_argument(
         "--images",
         type=str,
-        default=str(Path(__file__).parent / "images"),
+        default=str(get_resource_path("images")),
         help="Directory containing 216 PNGs named like '0-0-0.png' ... '5-5-5.png'",
     )
     parser.add_argument("--width", type=int, default=1024, help="Initial window width")
@@ -284,7 +334,7 @@ def main() -> None:
         candidate_paths.append(Path(args.labels).expanduser().resolve())
     else:
         # Try common defaults in images dir then script dir
-        for base in (images_directory, Path(__file__).parent):
+        for base in (images_directory, get_resource_path(""), Path(__file__).parent):
             candidate_paths.append(base / "labels.json")
             candidate_paths.append(base / "labels.js")
 

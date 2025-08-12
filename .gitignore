@@ -39,3 +39,8 @@ Thumbs.db
 
 # Images
 images/
+
+# macOS build artifacts (moved to mac/ directory)
+# mac/build/
+# mac/dist/
+# mac/venv/
