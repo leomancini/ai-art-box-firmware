@@ -119,7 +119,7 @@ class SwitchController:
                 if self.select_channel(3):  # LCD is on channel 3 (SD3)
                     self.lcd = CharLCD('PCF8574', 0x27)
                     self.lcd.clear()
-                    print("✓ LCD initialized successfully")
+                    print("LCD initialized successfully")
                     return True
         except Exception as e:
             print(f"LCD init error: {e}")
@@ -140,7 +140,7 @@ class SwitchController:
                 
                 # Line 1: Title
                 self.lcd.cursor_pos = (0, 0)
-                self.lcd.write_string("AI Art Box Display")
+                self.lcd.write_string("**** AI ART BOX ****")
                 
                 if self.labels:
                     # Show descriptive labels
@@ -194,7 +194,6 @@ class SwitchController:
                         if position is not None:
                             old_pos = self.switch_positions[dev['name']]
                             if old_pos != position:
-                                print(f"{dev['name']}: {old_pos} -> {position}")
                                 self.switch_positions[dev['name']] = position
                                 changes_detected = True
             
@@ -240,6 +239,7 @@ class AIArtBoxDisplay:
         
         # Pygame setup
         pygame.init()
+        pygame.mouse.set_visible(False)
         pygame.display.set_caption("AI Art Box Display")
         
         if fullscreen:
@@ -358,7 +358,6 @@ class AIArtBoxDisplay:
             new_coords = self.switch_controller.get_image_coordinates()
             if new_coords != self.current_coords:
                 self.current_coords = new_coords
-                print(f"Displaying image: {self._current_filename()}")
                 self._render()
             
             self.clock.tick(30)  # 30 FPS
