@@ -9,7 +9,7 @@ Switch 1 controls first digit (0-5)
 Switch 2 controls second digit (0-5) 
 Switch 3 controls third digit (0-5)
 
-Images are displayed as {switch1-1}-{switch2-1}-{switch3-1}.png
+Images are displayed as {switch1-1}-{switch2-1}-{switch3-1}.jpeg
 """
 
 from __future__ import annotations
@@ -268,7 +268,7 @@ class AIArtBoxDisplay:
 
     def _current_filename(self) -> str:
         """Generate filename based on current coordinates"""
-        return f"{self.current_coords[0]}-{self.current_coords[1]}-{self.current_coords[2]}.png"
+        return f"{self.current_coords[0]}-{self.current_coords[1]}-{self.current_coords[2]}.jpeg"
 
     def _current_image_path(self) -> Path:
         """Get path to current image"""
@@ -377,7 +377,7 @@ def main():
         "--images",
         type=str,
         default="/home/fcc-010/Desktop/ai-art-box-firmware/images",
-        help="Directory containing images named 0-0-0.png to 5-5-5.png"
+        help="Directory containing images named 0-0-0.jpeg to 5-5-5.jpeg"
     )
     parser.add_argument(
         "--windowed",
@@ -393,7 +393,7 @@ def main():
         sys.exit(1)
     
     # Check for some required images
-    test_images = ["0-0-0.png", "1-1-1.png", "5-5-5.png"]
+    test_images = ["0-0-0.jpeg", "1-1-1.jpeg", "5-5-5.jpeg"]
     missing_images = []
     for img in test_images:
         if not (images_directory / img).exists():
