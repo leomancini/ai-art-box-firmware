@@ -140,7 +140,7 @@ class SwitchController:
                 
                 # Line 1: Title
                 self.lcd.cursor_pos = (0, 0)
-                self.lcd.write_string("**** AI ART BOX ****")
+                self.lcd.write_string("*** INTER-ACTIVE ***")
                 
                 if self.labels:
                     # Show descriptive labels
@@ -162,6 +162,39 @@ class SwitchController:
                     self.lcd.cursor_pos = (3, 0)
                     self.lcd.write_string(f"SW3: Pos {self.switch_positions['SWITCH_3']}")
                 
+            return True
+        except Exception as e:
+            print(f"LCD update error: {e}")
+            return False
+
+    def update_lcd_for_coords(self, coords: Tuple[int, int, int]) -> bool:
+        """Update LCD with labels corresponding to provided image coordinates"""
+        try:
+            if self.lcd is None:
+                return False
+            with channel_lock:
+                if not self.select_channel(3):
+                    return False
+                self.lcd.clear()
+                # Line 1: Title
+                self.lcd.cursor_pos = (0, 0)
+                self.lcd.write_string("*** SCREEN-SAVER ***")
+                if self.labels:
+                    lines = [
+                        self.labels['first'][coords[0]],
+                        self.labels['second'][coords[1]],
+                        self.labels['third'][coords[2]],
+                    ]
+                    for i, text in enumerate(lines):
+                        self.lcd.cursor_pos = (i + 1, 0)
+                        self.lcd.write_string(text[:20])
+                else:
+                    self.lcd.cursor_pos = (1, 0)
+                    self.lcd.write_string(f"SW1: Pos {coords[0] + 1}")
+                    self.lcd.cursor_pos = (2, 0)
+                    self.lcd.write_string(f"SW2: Pos {coords[1] + 1}")
+                    self.lcd.cursor_pos = (3, 0)
+                    self.lcd.write_string(f"SW3: Pos {coords[2] + 1}")
             return True
         except Exception as e:
             print(f"LCD update error: {e}")
@@ -237,6 +270,21 @@ class AIArtBoxDisplay:
         # Current image coordinates
         self.current_coords = (0, 0, 0)
         
+        # Screensaver state
+        self.mode = "screensaver"  # start in screensaver mode as requested
+        self.last_interaction_ts = 0.0  # tracks last time switches changed
+        self.inactivity_seconds = 5 * 60  # 5 minutes
+        self.screensaver_cycle_index = 0
+        self.screensaver_cycle_interval = 3.0  # seconds per image while in screensaver
+        self._last_cycle_ts = time.time()
+        
+        # Track last observed switch coordinates to detect real movement
+        self._last_switch_coords: Tuple[int, int, int] = self.switch_controller.get_image_coordinates()
+        # Start from the switch coordinates to make labels consistent initially
+        self.current_coords = self._last_switch_coords
+        # Ensure screensaver starts cycling from the current image
+        self.screensaver_cycle_index = self._coords_to_index(self.current_coords)
+        
         # Pygame setup
         pygame.init()
         pygame.mouse.set_visible(False)
@@ -309,6 +357,18 @@ class AIArtBoxDisplay:
             pos_surface = self.font.render(pos_message, True, (255, 255, 255))
             pos_rect = pos_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 60))
             self.screen.blit(pos_surface, pos_rect)
+            
+            # On errors, draw labels overlay corresponding to current image coordinates
+            self._draw_labels_overlay(self.current_coords)
+            
+            # Update LCD appropriately depending on mode
+            try:
+                if self.mode == "screensaver":
+                    self.switch_controller.update_lcd_for_coords(self.current_coords)
+                else:
+                    self.switch_controller._update_lcd_display()
+            except Exception:
+                pass
         else:
             # Scale image to fit screen while maintaining aspect ratio
             img_w, img_h = surface.get_size()
@@ -324,8 +384,65 @@ class AIArtBoxDisplay:
             # Center the image on screen
             blit_rect = scaled_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(scaled_surface, blit_rect)
+            
+            # Update the LCD to show labels depending on mode
+            try:
+                if self.mode == "screensaver":
+                    self.switch_controller.update_lcd_for_coords(self.current_coords)
+                else:
+                    self.switch_controller._update_lcd_display()
+            except Exception:
+                pass
         
         pygame.display.flip()
+
+    def _draw_labels_overlay(self, coords: Tuple[int, int, int]):
+        """Draw translucent overlay with labels for the given coordinates"""
+        try:
+            labels = self.switch_controller.labels
+            if labels and all(k in labels for k in ("first", "second", "third")):
+                lines = [
+                    labels['first'][coords[0]],
+                    labels['second'][coords[1]],
+                    labels['third'][coords[2]],
+                ]
+            else:
+                # Fallback to numeric labels
+                lines = [str(coords[0]), str(coords[1]), str(coords[2])]
+            
+            text_surfaces: List[pygame.Surface] = [self.font.render(line, True, (240, 240, 240)) for line in lines]
+            padding = 12
+            gap = 6
+            widths = [s.get_width() for s in text_surfaces]
+            fixed_line_height = self.font.get_height()
+            box_w = max(widths) + padding * 2
+            box_h = len(text_surfaces) * fixed_line_height + gap * (len(text_surfaces) - 1) + padding * 2
+            
+            box_surface = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+            box_surface.fill((0, 0, 0, 160))
+            
+            for idx, s in enumerate(text_surfaces):
+                y = padding + idx * (fixed_line_height + gap)
+                y_offset = max(0, (fixed_line_height - s.get_height()) // 2)
+                box_surface.blit(s, (padding, y + y_offset))
+            
+            # Top-left corner placement with small margin
+            self.screen.blit(box_surface, (10, 10))
+        except Exception:
+            # If anything goes wrong with labels rendering, silently skip overlay
+            pass
+
+    @staticmethod
+    def _coords_to_index(coords: Tuple[int, int, int]) -> int:
+        return coords[0] * 36 + coords[1] * 6 + coords[2]
+
+    @staticmethod
+    def _index_to_coords(index: int) -> Tuple[int, int, int]:
+        index = index % 216
+        a = index // 36
+        b = (index // 6) % 6
+        c = index % 6
+        return (a, b, c)
 
     def run(self):
         """Main display loop"""
@@ -354,11 +471,37 @@ class AIArtBoxDisplay:
                     self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
                     self._render()
             
-            # Check if switch positions changed
-            new_coords = self.switch_controller.get_image_coordinates()
-            if new_coords != self.current_coords:
-                self.current_coords = new_coords
+            now = time.time()
+            # Check if switch positions changed (user interaction)
+            new_switch_coords = self.switch_controller.get_image_coordinates()
+            if new_switch_coords != self._last_switch_coords:
+                # Update last seen switch state
+                self._last_switch_coords = new_switch_coords
+                # Any movement exits screensaver and updates interaction timestamp
+                self.last_interaction_ts = now
+                if self.mode != "normal":
+                    self.mode = "normal"
+                # In normal mode, the displayed image follows the switches
+                if new_switch_coords != self.current_coords:
+                    self.current_coords = new_switch_coords
+                    self._render()
+
+            # In normal mode, enter screensaver after inactivity
+            if self.mode == "normal" and (now - self.last_interaction_ts >= self.inactivity_seconds):
+                self.mode = "screensaver"
+                # Start cycling from current image
+                self.screensaver_cycle_index = self._coords_to_index(self.current_coords)
+                self._last_cycle_ts = now
+                # Immediate render keeps current image but with overlay already handled
                 self._render()
+
+            # In screensaver mode, cycle through all images periodically
+            if self.mode == "screensaver":
+                if now - self._last_cycle_ts >= self.screensaver_cycle_interval:
+                    self.screensaver_cycle_index = (self.screensaver_cycle_index + 1) % 216
+                    self.current_coords = self._index_to_coords(self.screensaver_cycle_index)
+                    self._last_cycle_ts = now
+                    self._render()
             
             self.clock.tick(30)  # 30 FPS
         
