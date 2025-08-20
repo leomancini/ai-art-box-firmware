@@ -488,13 +488,13 @@ class AIArtBoxDisplay:
                 # Start cycling from current image
                 self.screensaver_cycle_index = self._coords_to_index(self.current_coords)
                 self._last_cycle_ts = now
-                # Update LCD to show screensaver mode with current image labels
+                # Immediate render keeps current image but with overlay already handled
+                self._render()
+                # Update LCD after render to show screensaver mode with current image labels
                 try:
                     self.switch_controller.update_lcd_for_coords(self.current_coords)
                 except Exception:
                     pass
-                # Immediate render keeps current image but with overlay already handled
-                self._render()
 
             # In screensaver mode, cycle through all images periodically
             if self.mode == "screensaver":
@@ -502,12 +502,12 @@ class AIArtBoxDisplay:
                     self.screensaver_cycle_index = (self.screensaver_cycle_index + 1) % 216
                     self.current_coords = self._index_to_coords(self.screensaver_cycle_index)
                     self._last_cycle_ts = now
-                    # Update LCD to show labels for current screensaver image
+                    self._render()
+                    # Update LCD after image is rendered to sync timing
                     try:
                         self.switch_controller.update_lcd_for_coords(self.current_coords)
                     except Exception:
                         pass
-                    self._render()
             
             self.clock.tick(30)  # 30 FPS
         
