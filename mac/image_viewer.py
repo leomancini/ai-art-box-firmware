@@ -130,13 +130,6 @@ class PygameImageViewer:
         
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 32)
-        
-        # Crossfade settings
-        self.enable_crossfade: bool = True
-        self.crossfade_duration: float = 0.3  # seconds
-        self.crossfade_fps: int = 60
-        self._last_scaled_surface: Optional[pygame.Surface] = None
-        self._last_blit_rect: Optional[pygame.Rect] = None
 
         self._render()
 
@@ -220,24 +213,11 @@ class PygameImageViewer:
 
         scaled_surface, blit_rect = self._get_scaled_surface_and_rect(surface)
 
-        performed_crossfade = False
-        if self.enable_crossfade and self._last_scaled_surface is not None and self._last_blit_rect is not None:
-            try:
-                self._crossfade(self._last_scaled_surface, self._last_blit_rect, scaled_surface, blit_rect)
-                performed_crossfade = True
-            except Exception:
-                performed_crossfade = False
-
-        if not performed_crossfade:
-            self.screen.fill((0, 0, 0))
-            self.screen.blit(scaled_surface, blit_rect)
-            pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
-            self._draw_labels_overlay()
-            pygame.display.flip()
-
-        # Cache for next transition
-        self._last_scaled_surface = scaled_surface
-        self._last_blit_rect = blit_rect
+        self.screen.fill((0, 0, 0))
+        self.screen.blit(scaled_surface, blit_rect)
+        pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
+        self._draw_labels_overlay()
+        pygame.display.flip()
 
     def _get_scaled_surface_and_rect(self, surface: pygame.Surface) -> Tuple[pygame.Surface, pygame.Rect]:
         target_w, target_h = self.screen.get_size()
@@ -248,32 +228,6 @@ class PygameImageViewer:
         scaled_surface = pygame.transform.smoothscale(surface, (scaled_w, scaled_h))
         blit_rect = scaled_surface.get_rect(center=(target_w // 2, target_h // 2))
         return scaled_surface, blit_rect
-
-    def _crossfade(self, old_surface: pygame.Surface, old_rect: pygame.Rect, new_surface: pygame.Surface, new_rect: pygame.Rect) -> None:
-        duration = max(0.0, float(self.crossfade_duration))
-        if duration == 0:
-            self.screen.fill((0, 0, 0))
-            self.screen.blit(new_surface, new_rect)
-            pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
-            self._draw_labels_overlay()
-            pygame.display.flip()
-            return
-        frames = max(1, int(self.crossfade_fps * duration))
-        for i in range(frames + 1):
-            alpha = int(255 * (i / frames))
-            self.screen.fill((0, 0, 0))
-            self.screen.blit(old_surface, old_rect)
-            if alpha >= 255:
-                self.screen.blit(new_surface, new_rect)
-            else:
-                temp = new_surface.copy()
-                temp.set_alpha(alpha)
-                self.screen.blit(temp, new_rect)
-            pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
-            self._draw_labels_overlay()
-            pygame.display.flip()
-            pygame.event.pump()
-            self.clock.tick(self.crossfade_fps)
 
     def _draw_labels_overlay(self) -> None:
         lines = [
@@ -310,9 +264,6 @@ class PygameImageViewer:
                     running = False
                 elif event.type == pygame.VIDEORESIZE:
                     self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
-                    # Reset crossfade cache on resize
-                    self._last_scaled_surface = None
-                    self._last_blit_rect = None
                     self._render()
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE,):
@@ -344,7 +295,7 @@ def get_resource_path(relative_path: str) -> Path:
         return bundle_dir / relative_path
     else:
         # Running in development
-        return Path(__file__).parent / relative_path
+        return Path(__file__).parent.parent / relative_path
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pygame viewer for 'd0-d1-d2.jpeg' images with QWERTY/ASDFGH/ZXCVBN controls.")
@@ -388,7 +339,7 @@ def main() -> None:
         candidate_paths.append(Path(args.labels).expanduser().resolve())
     else:
         # Try common defaults in images dir then script dir
-        for base in (images_directory, get_resource_path(""), Path(__file__).parent):
+        for base in (images_directory, get_resource_path(""), Path(__file__).parent.parent):
             candidate_paths.append(base / "labels.json")
             candidate_paths.append(base / "labels.js")
 
