@@ -76,6 +76,9 @@ class SwitchController:
         self.lcd = None
         self._init_lcd()
         
+        # Show initialization message
+        self._show_initializing_message()
+        
         # Start monitoring thread
         self.monitor_thread = threading.Thread(target=self._monitor_switches, daemon=True)
         self.monitor_thread.start()
@@ -125,6 +128,27 @@ class SwitchController:
             print(f"LCD init error: {e}")
             return False
         return False
+    
+    def _show_initializing_message(self):
+        """Display initialization message on LCD"""
+        try:
+            if self.lcd is None:
+                return False
+            
+            with channel_lock:
+                if not self.select_channel(3):  # LCD is on channel 3 (SD3)
+                    return False
+                
+                self.lcd.clear()
+                
+                # Center the initialization message
+                self.lcd.cursor_pos = (1, 0)
+                self.lcd.write_string("*** INITIALIZING ***")
+                
+            return True
+        except Exception as e:
+            print(f"LCD initialization message error: {e}")
+            return False
     
     def _update_lcd_display(self):
         """Update LCD with current switch labels"""
@@ -204,8 +228,8 @@ class SwitchController:
         """Monitor all switches in background thread"""
         print("Starting switch monitoring...")
         
-        # Initial LCD update
-        self._update_lcd_display()
+        # Don't immediately update LCD - let initialization message show
+        # LCD will be updated when switches change or when screensaver starts
         
         while self.running:
             changes_detected = False
