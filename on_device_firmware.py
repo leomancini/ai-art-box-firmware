@@ -361,13 +361,6 @@ class AIArtBoxDisplay:
             
             self._draw_labels_overlay(self.current_coords)
             
-            try:
-                if self.mode == "screensaver":
-                    self.switch_controller.update_lcd_for_coords(self.current_coords)
-                else:
-                    self.switch_controller._update_lcd_display()
-            except Exception:
-                pass
             pygame.display.flip()
             # Do not update last surface on missing image
             return
@@ -379,15 +372,6 @@ class AIArtBoxDisplay:
         self.screen.fill((0, 0, 0))
         self.screen.blit(scaled_surface, blit_rect)
         pygame.display.flip()
-        
-        # Update the LCD to show labels depending on mode (after final frame)
-        try:
-            if self.mode == "screensaver":
-                self.switch_controller.update_lcd_for_coords(self.current_coords)
-            else:
-                self.switch_controller._update_lcd_display()
-        except Exception:
-            pass
 
     def _get_scaled_surface_and_rect(self, surface: pygame.Surface) -> Tuple[pygame.Surface, pygame.Rect]:
         img_w, img_h = surface.get_size()
@@ -504,6 +488,11 @@ class AIArtBoxDisplay:
                 # Start cycling from current image
                 self.screensaver_cycle_index = self._coords_to_index(self.current_coords)
                 self._last_cycle_ts = now
+                # Update LCD to show screensaver mode with current image labels
+                try:
+                    self.switch_controller.update_lcd_for_coords(self.current_coords)
+                except Exception:
+                    pass
                 # Immediate render keeps current image but with overlay already handled
                 self._render()
 
@@ -513,6 +502,11 @@ class AIArtBoxDisplay:
                     self.screensaver_cycle_index = (self.screensaver_cycle_index + 1) % 216
                     self.current_coords = self._index_to_coords(self.screensaver_cycle_index)
                     self._last_cycle_ts = now
+                    # Update LCD to show labels for current screensaver image
+                    try:
+                        self.switch_controller.update_lcd_for_coords(self.current_coords)
+                    except Exception:
+                        pass
                     self._render()
             
             self.clock.tick(30)  # 30 FPS
