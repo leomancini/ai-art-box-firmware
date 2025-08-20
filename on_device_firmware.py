@@ -258,7 +258,7 @@ class SwitchController:
             if changes_detected:
                 self._update_lcd_display()
             
-            time.sleep(0.1)
+            time.sleep(0.05)  # 50ms for more responsive switch detection
     
     def get_image_coordinates(self) -> Tuple[int, int, int]:
         """Get current image coordinates (0-5) based on switch positions (1-6)"""
@@ -529,12 +529,20 @@ class AIArtBoxDisplay:
                     self._last_switch_coords = new_switch_coords
                     # Any movement exits screensaver and updates interaction timestamp
                     self.last_interaction_ts = now
+                    was_in_screensaver = (self.mode != "normal")
                     if self.mode != "normal":
                         self.mode = "normal"
                     # In normal mode, the displayed image follows the switches
                     if new_switch_coords != self.current_coords:
                         self.current_coords = new_switch_coords
                         self._render()
+                    
+                    # Immediately update LCD when exiting screensaver mode
+                    if was_in_screensaver:
+                        try:
+                            self.switch_controller._update_lcd_display()
+                        except Exception:
+                            pass
 
             # In normal mode, enter screensaver after inactivity
             if self.mode == "normal" and (now - self.last_interaction_ts >= self.inactivity_seconds):
