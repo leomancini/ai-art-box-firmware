@@ -307,11 +307,14 @@ class AIArtBoxDisplay:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 48)
         
-        # Image cache
+        # Image cache with memory management
         self.surface_cache: Dict[Path, pygame.Surface] = {}
+        self.cache_access_order: List[Path] = []  # Track access order for LRU eviction
+        self.max_cache_size: int = 25  # Limit cache to 25 images to save memory
         
         print(f"Display initialized: {self.screen_width}x{self.screen_height}")
         print(f"Fullscreen: {fullscreen}")
+        print(f"Image cache limit: {self.max_cache_size} images")
         
         # Initial render
         self._render()
@@ -325,8 +328,12 @@ class AIArtBoxDisplay:
         return self.images_directory / self._current_filename()
 
     def _load_surface(self, path: Path) -> Optional[pygame.Surface]:
-        """Load and cache image surface"""
+        """Load and cache image surface with LRU eviction"""
+        # Check if already cached
         if path in self.surface_cache:
+            # Move to end of access order (most recently used)
+            self.cache_access_order.remove(path)
+            self.cache_access_order.append(path)
             return self.surface_cache[path]
         
         if not path.exists():
@@ -334,11 +341,34 @@ class AIArtBoxDisplay:
         
         try:
             surface = pygame.image.load(str(path)).convert_alpha()
+            
+            # Evict least recently used items if cache is full
+            while len(self.surface_cache) >= self.max_cache_size:
+                if self.cache_access_order:
+                    lru_path = self.cache_access_order.pop(0)  # Remove oldest
+                    if lru_path in self.surface_cache:
+                        del self.surface_cache[lru_path]
+                        print(f"Evicted cached image: {lru_path.name}")
+                else:
+                    break
+            
+            # Add new surface to cache
             self.surface_cache[path] = surface
+            self.cache_access_order.append(path)
             return surface
         except Exception as exc:
             print(f"Failed to load image '{path}': {exc}", file=sys.stderr)
             return None
+
+    def _get_cache_stats(self) -> str:
+        """Get current cache statistics for monitoring"""
+        return f"Cache: {len(self.surface_cache)}/{self.max_cache_size} images"
+
+    def _clear_cache(self):
+        """Clear all cached images to free memory"""
+        self.surface_cache.clear()
+        self.cache_access_order.clear()
+        print("Image cache cleared")
 
     def _render(self):
         """Render current image fullscreen"""
@@ -512,6 +542,8 @@ class AIArtBoxDisplay:
             self.clock.tick(30)  # 30 FPS
         
         # Cleanup
+        print(f"Final {self._get_cache_stats()}")
+        self._clear_cache()
         self.switch_controller.stop()
         pygame.quit()
         print("AI Art Box Display stopped.")
