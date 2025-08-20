@@ -308,6 +308,13 @@ class AIArtBoxDisplay:
         # Image cache
         self.surface_cache: Dict[Path, pygame.Surface] = {}
         
+        # Crossfade settings
+        self.enable_crossfade: bool = True
+        self.crossfade_duration: float = 0.4  # seconds
+        self.crossfade_fps: int = 60
+        self._last_scaled_surface: Optional[pygame.Surface] = None
+        self._last_blit_rect: Optional[pygame.Rect] = None
+        
         print(f"Display initialized: {self.screen_width}x{self.screen_height}")
         print(f"Fullscreen: {fullscreen}")
         
@@ -346,22 +353,19 @@ class AIArtBoxDisplay:
         surface = self._load_surface(image_path)
         
         if surface is None:
-            # Show error message if image not found
+            # No crossfade for missing images; render fallback text
             message = f"Missing: {image_path.name}"
             text_surface = self.font.render(message, True, (255, 255, 255))
             rect = text_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(text_surface, rect)
             
-            # Show switch positions
             pos_message = f"Switches: {self.switch_controller.switch_positions['SWITCH_1']}-{self.switch_controller.switch_positions['SWITCH_2']}-{self.switch_controller.switch_positions['SWITCH_3']}"
             pos_surface = self.font.render(pos_message, True, (255, 255, 255))
             pos_rect = pos_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 60))
             self.screen.blit(pos_surface, pos_rect)
             
-            # On errors, draw labels overlay corresponding to current image coordinates
             self._draw_labels_overlay(self.current_coords)
             
-            # Update LCD appropriately depending on mode
             try:
                 if self.mode == "screensaver":
                     self.switch_controller.update_lcd_for_coords(self.current_coords)
@@ -369,32 +373,76 @@ class AIArtBoxDisplay:
                     self.switch_controller._update_lcd_display()
             except Exception:
                 pass
-        else:
-            # Scale image to fit screen while maintaining aspect ratio
-            img_w, img_h = surface.get_size()
-            scale = min(self.screen_width / img_w, self.screen_height / img_h)
-            
-            if scale != 1.0:
-                scaled_w = max(1, int(img_w * scale))
-                scaled_h = max(1, int(img_h * scale))
-                scaled_surface = pygame.transform.smoothscale(surface, (scaled_w, scaled_h))
-            else:
-                scaled_surface = surface
-            
-            # Center the image on screen
-            blit_rect = scaled_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
-            self.screen.blit(scaled_surface, blit_rect)
-            
-            # Update the LCD to show labels depending on mode
-            try:
-                if self.mode == "screensaver":
-                    self.switch_controller.update_lcd_for_coords(self.current_coords)
-                else:
-                    self.switch_controller._update_lcd_display()
-            except Exception:
-                pass
+            pygame.display.flip()
+            # Do not update last surface on missing image
+            return
         
-        pygame.display.flip()
+        # Compute scaled surface and destination rect
+        scaled_surface, blit_rect = self._get_scaled_surface_and_rect(surface)
+        
+        performed_crossfade = False
+        if self.enable_crossfade and self._last_scaled_surface is not None and self._last_blit_rect is not None:
+            try:
+                self._crossfade(self._last_scaled_surface, self._last_blit_rect, scaled_surface, blit_rect)
+                performed_crossfade = True
+            except Exception:
+                performed_crossfade = False
+        
+        if not performed_crossfade:
+            # Simple render without transition
+            self.screen.fill((0, 0, 0))
+            self.screen.blit(scaled_surface, blit_rect)
+            pygame.display.flip()
+        
+        # Update the LCD to show labels depending on mode (after final frame)
+        try:
+            if self.mode == "screensaver":
+                self.switch_controller.update_lcd_for_coords(self.current_coords)
+            else:
+                self.switch_controller._update_lcd_display()
+        except Exception:
+            pass
+        
+        # Cache for next transition
+        self._last_scaled_surface = scaled_surface
+        self._last_blit_rect = blit_rect
+
+    def _get_scaled_surface_and_rect(self, surface: pygame.Surface) -> Tuple[pygame.Surface, pygame.Rect]:
+        img_w, img_h = surface.get_size()
+        scale = min(self.screen_width / img_w, self.screen_height / img_h)
+        if scale != 1.0:
+            scaled_w = max(1, int(img_w * scale))
+            scaled_h = max(1, int(img_h * scale))
+            scaled_surface = pygame.transform.smoothscale(surface, (scaled_w, scaled_h))
+        else:
+            scaled_surface = surface
+        blit_rect = scaled_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+        return scaled_surface, blit_rect
+
+    def _crossfade(self, old_surface: pygame.Surface, old_rect: pygame.Rect, new_surface: pygame.Surface, new_rect: pygame.Rect) -> None:
+        duration = max(0.0, float(self.crossfade_duration))
+        if duration == 0:
+            # Instant switch
+            self.screen.fill((0, 0, 0))
+            self.screen.blit(new_surface, new_rect)
+            pygame.display.flip()
+            return
+        frames = max(1, int(self.crossfade_fps * duration))
+        for i in range(frames + 1):
+            alpha = int(255 * (i / frames))
+            # Render frame: old fully visible, new with increasing alpha
+            self.screen.fill((0, 0, 0))
+            self.screen.blit(old_surface, old_rect)
+            if alpha >= 255:
+                self.screen.blit(new_surface, new_rect)
+            else:
+                temp = new_surface.copy()
+                temp.set_alpha(alpha)
+                self.screen.blit(temp, new_rect)
+            pygame.display.flip()
+            # Keep UI responsive during transition
+            pygame.event.pump()
+            self.clock.tick(self.crossfade_fps)
 
     def _draw_labels_overlay(self, coords: Tuple[int, int, int]):
         """Draw translucent overlay with labels for the given coordinates"""
@@ -465,10 +513,16 @@ class AIArtBoxDisplay:
                             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.FULLSCREEN)
                         else:
                             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
+                        # Reset crossfade cache on mode change
+                        self._last_scaled_surface = None
+                        self._last_blit_rect = None
                 elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                     self.screen_width = event.w
                     self.screen_height = event.h
                     self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
+                    # Reset crossfade cache on resize
+                    self._last_scaled_surface = None
+                    self._last_blit_rect = None
                     self._render()
             
             now = time.time()

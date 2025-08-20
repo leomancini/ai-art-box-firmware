@@ -93,7 +93,7 @@ def load_labels_file(path: Path) -> Dict[str, List[str]]:
 class PygameImageViewer:
     """
     Image viewer using Pygame, mapping keyboard groups to three digits (0..5) to
-    load files named "d0-d1-d2.png" from a directory. Keys:
+    load files named "d0-d1-d2.jpeg" from a directory. Keys:
 
     - First digit:  Q W E R T Y → 0..5
     - Second digit: A S D F G H → 0..5
@@ -130,6 +130,13 @@ class PygameImageViewer:
         
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 32)
+        
+        # Crossfade settings
+        self.enable_crossfade: bool = True
+        self.crossfade_duration: float = 0.3  # seconds
+        self.crossfade_fps: int = 60
+        self._last_scaled_surface: Optional[pygame.Surface] = None
+        self._last_blit_rect: Optional[pygame.Rect] = None
 
         self._render()
 
@@ -156,9 +163,9 @@ class PygameImageViewer:
         """Create a pygame surface for the window icon from the custom icon"""
         try:
             # Try to load the custom icon file
-            icon_path = get_resource_path("Mac App Icon.png")
+            icon_path = get_resource_path("Mac App Icon.jpeg")
             if icon_path.exists():
-                # Load the original PNG and scale it down
+                # Load the original jpeg and scale it down
                 icon_size = 32
                 original_surface = pygame.image.load(str(icon_path))
                 scaled_surface = pygame.transform.scale(original_surface, (icon_size, icon_size))
@@ -177,7 +184,7 @@ class PygameImageViewer:
         return surface
 
     def _current_filename(self) -> str:
-        return f"{self.first_digit}-{self.second_digit}-{self.third_digit}.png"
+        return f"{self.first_digit}-{self.second_digit}-{self.third_digit}.jpeg"
 
     def _current_image_path(self) -> Path:
         return self.images_directory / self._current_filename()
@@ -208,21 +215,65 @@ class PygameImageViewer:
             self.screen.blit(text_surface, rect)
             pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
             pygame.display.flip()
+            # Do not update last surface on missing image
             return
 
+        scaled_surface, blit_rect = self._get_scaled_surface_and_rect(surface)
+
+        performed_crossfade = False
+        if self.enable_crossfade and self._last_scaled_surface is not None and self._last_blit_rect is not None:
+            try:
+                self._crossfade(self._last_scaled_surface, self._last_blit_rect, scaled_surface, blit_rect)
+                performed_crossfade = True
+            except Exception:
+                performed_crossfade = False
+
+        if not performed_crossfade:
+            self.screen.fill((0, 0, 0))
+            self.screen.blit(scaled_surface, blit_rect)
+            pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
+            self._draw_labels_overlay()
+            pygame.display.flip()
+
+        # Cache for next transition
+        self._last_scaled_surface = scaled_surface
+        self._last_blit_rect = blit_rect
+
+    def _get_scaled_surface_and_rect(self, surface: pygame.Surface) -> Tuple[pygame.Surface, pygame.Rect]:
         target_w, target_h = self.screen.get_size()
         img_w, img_h = surface.get_size()
-
         scale = min(target_w / img_w, target_h / img_h)
         scaled_w = max(1, int(img_w * scale))
         scaled_h = max(1, int(img_h * scale))
         scaled_surface = pygame.transform.smoothscale(surface, (scaled_w, scaled_h))
-
         blit_rect = scaled_surface.get_rect(center=(target_w // 2, target_h // 2))
-        self.screen.blit(scaled_surface, blit_rect)
-        pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
-        self._draw_labels_overlay()
-        pygame.display.flip()
+        return scaled_surface, blit_rect
+
+    def _crossfade(self, old_surface: pygame.Surface, old_rect: pygame.Rect, new_surface: pygame.Surface, new_rect: pygame.Rect) -> None:
+        duration = max(0.0, float(self.crossfade_duration))
+        if duration == 0:
+            self.screen.fill((0, 0, 0))
+            self.screen.blit(new_surface, new_rect)
+            pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
+            self._draw_labels_overlay()
+            pygame.display.flip()
+            return
+        frames = max(1, int(self.crossfade_fps * duration))
+        for i in range(frames + 1):
+            alpha = int(255 * (i / frames))
+            self.screen.fill((0, 0, 0))
+            self.screen.blit(old_surface, old_rect)
+            if alpha >= 255:
+                self.screen.blit(new_surface, new_rect)
+            else:
+                temp = new_surface.copy()
+                temp.set_alpha(alpha)
+                self.screen.blit(temp, new_rect)
+            pygame.display.set_caption(f"AI Art Box Viewer (Pygame) — {self._current_filename()}")
+            self._draw_labels_overlay()
+            pygame.display.flip()
+            pygame.event.pump()
+            self.clock.tick(self.crossfade_fps)
 
     def _draw_labels_overlay(self) -> None:
         lines = [
@@ -259,6 +310,9 @@ class PygameImageViewer:
                     running = False
                 elif event.type == pygame.VIDEORESIZE:
                     self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                    # Reset crossfade cache on resize
+                    self._last_scaled_surface = None
+                    self._last_blit_rect = None
                     self._render()
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE,):
@@ -293,12 +347,12 @@ def get_resource_path(relative_path: str) -> Path:
         return Path(__file__).parent / relative_path
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Pygame viewer for 'd0-d1-d2.png' images with QWERTY/ASDFGH/ZXCVBN controls.")
+    parser = argparse.ArgumentParser(description="Pygame viewer for 'd0-d1-d2.jpeg' images with QWERTY/ASDFGH/ZXCVBN controls.")
     parser.add_argument(
         "--images",
         type=str,
         default=str(get_resource_path("images")),
-        help="Directory containing 216 PNGs named like '0-0-0.png' ... '5-5-5.png'",
+        help="Directory containing 216 jpegs named like '0-0-0.jpeg' ... '5-5-5.jpeg'",
     )
     parser.add_argument("--width", type=int, default=1024, help="Initial window width")
     parser.add_argument("--height", type=int, default=768, help="Initial window height")
@@ -322,7 +376,7 @@ def main() -> None:
     if not images_directory.exists():
         print(
             f"Image directory does not exist: {images_directory}\n"
-            "Create it and add files like '0-0-0.png', or pass a different path via --images.",
+            "Create it and add files like '0-0-0.jpeg', or pass a different path via --images.",
             file=sys.stderr,
         )
         sys.exit(1)
