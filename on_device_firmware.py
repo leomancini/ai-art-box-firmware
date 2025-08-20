@@ -284,6 +284,8 @@ class AIArtBoxDisplay:
         self.current_coords = self._last_switch_coords
         # Ensure screensaver starts cycling from the current image
         self.screensaver_cycle_index = self._coords_to_index(self.current_coords)
+        # Flag to ignore first switch reading to prevent immediate exit from screensaver
+        self._first_switch_read = True
         
         # Pygame setup
         pygame.init()
@@ -480,16 +482,21 @@ class AIArtBoxDisplay:
             # Check if switch positions changed (user interaction)
             new_switch_coords = self.switch_controller.get_image_coordinates()
             if new_switch_coords != self._last_switch_coords:
-                # Update last seen switch state
-                self._last_switch_coords = new_switch_coords
-                # Any movement exits screensaver and updates interaction timestamp
-                self.last_interaction_ts = now
-                if self.mode != "normal":
-                    self.mode = "normal"
-                # In normal mode, the displayed image follows the switches
-                if new_switch_coords != self.current_coords:
-                    self.current_coords = new_switch_coords
-                    self._render()
+                # Skip the first switch reading to avoid immediate screensaver exit
+                if self._first_switch_read:
+                    self._first_switch_read = False
+                    self._last_switch_coords = new_switch_coords
+                else:
+                    # Update last seen switch state
+                    self._last_switch_coords = new_switch_coords
+                    # Any movement exits screensaver and updates interaction timestamp
+                    self.last_interaction_ts = now
+                    if self.mode != "normal":
+                        self.mode = "normal"
+                    # In normal mode, the displayed image follows the switches
+                    if new_switch_coords != self.current_coords:
+                        self.current_coords = new_switch_coords
+                        self._render()
 
             # In normal mode, enter screensaver after inactivity
             if self.mode == "normal" and (now - self.last_interaction_ts >= self.inactivity_seconds):
