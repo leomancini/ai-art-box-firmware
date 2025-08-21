@@ -1,62 +1,116 @@
 # AI Art Box Firmware
 
-## 🚀 Overview
+## Overview
 
-The `on_device_firmware.py` creates an interactive art display controlled by three 6-position switches! 🎛️ It shows different images based on switch positions and has a cool screensaver mode. 📺✨
+The `on_device_firmware.py` creates an interactive art display system controlled by three 6-position rotary switches. It displays different images based on switch positions and includes an automatic screensaver mode for continuous viewing.
 
-## 🔧 How It Works
+## How It Works
 
-### 🎮 Switch Control
+### Switch Control
 
-- **3 switches** control which image to show
-- Each switch has **6 positions** (1-6)
+- **Three switches** control which image to display
+- Each switch has **six positions** (1-6)
 - Creates **216 different combinations** (6×6×6)
-- Images are named like `0-0-0.jpeg`, `1-2-3.jpeg`, etc.
+- Images are named using the format `0-0-0.jpeg`, `1-2-3.jpeg`, etc.
 
-### 🖼️ Image Display
+### Image Display
 
 - Shows images **fullscreen** on HDMI display
-- **Smart caching** - remembers recently viewed images
-- **Auto-scaling** - fits any image to your screen
-- **Smooth transitions** between images
+- **Intelligent caching** - stores recently viewed images in memory
+- **Automatic scaling** - fits any image to the screen while maintaining aspect ratio
+- **Smooth rendering** with consistent 30 FPS performance
 
-### 📱 LCD Screen
+### LCD Screen
 
-- Shows what the switches are doing
-- Displays **descriptive labels** (if you have them)
-- Updates in real-time as you move switches
+- Displays current switch status and image information
+- Shows **descriptive labels** when available
+- Updates in real-time as switches are moved
 
-## 🎯 Two Modes
+## Operation Modes
 
-### 🎪 Interactive Mode
+The system operates in two distinct modes that provide different user experiences and functionality.
 
-- **Move any switch** → image changes instantly
-- LCD shows "**_ INTER-ACTIVE _**"
-- Perfect for exploring your art collection
+### Interactive Mode
 
-### 🌟 Screensaver Mode
+Interactive mode is the primary operating state where user input directly controls the displayed content.
 
-- **5 minutes of no movement** → automatic slideshow
-- Cycles through all 216 images every 3 seconds
-- LCD shows "**_ SCREEN-SAVER _**"
-- **Move any switch** → back to interactive mode
+**Activation:**
 
-## 🏗️ Hardware Setup
+- Automatically enters when any switch is moved
+- Remains active as long as switches are being adjusted
+- Default mode when the system first starts
 
-### 🔌 What You Need
+**Behavior:**
 
-- **3 rotary switches** (6 positions each)
-- **I2C multiplexer** to connect everything
-- **LCD display** to show current status
-- **Raspberry Pi** or similar computer
+- **Real-time response** - Image changes occur immediately when switches are moved
+- **Direct control** - Each switch position directly corresponds to the displayed image
+- **Exploration focused** - Users can systematically explore the image collection by adjusting switch positions
 
-### 📋 Connections
+**Display Information:**
+
+- LCD displays "**_ INTER-ACTIVE _**" on the first line
+- Shows current switch labels or positions on remaining lines
+- Updates instantly to reflect any switch changes
+
+**User Experience:**
+
+- Provides immediate visual feedback for all switch movements
+- Allows precise navigation through the image collection
+- Enables users to find and display specific images quickly
+- Perfect for guided tours, demonstrations, or interactive art experiences
+
+### Screensaver Mode
+
+Screensaver mode provides an automated viewing experience when the system is not being actively used.
+
+**Activation:**
+
+- **Automatic transition** occurs after 5 minutes of no switch movement
+- **Seamless transition** from the current interactive image
+- **Continuous operation** until user interaction resumes
+
+**Behavior:**
+
+- **Automatic cycling** through all 216 images in sequence
+- **3-second intervals** between image changes for comfortable viewing
+- **Sequential progression** from the current image position through the entire collection
+- **Looping playback** - returns to the beginning after reaching the last image
+
+**Display Information:**
+
+- LCD displays "**_ SCREEN-SAVER _**" on the first line
+- Shows labels for the currently displayed image
+- Updates with each image change to maintain context
+
+**User Experience:**
+
+- **Hands-free operation** - no user input required
+- **Continuous entertainment** - provides ongoing visual interest
+- **Discovery element** - users may see images they haven't explored manually
+- **Ambient display** - creates an engaging background for spaces
+
+**Mode Transition:**
+
+- **Immediate return** to interactive mode with any switch movement
+- **Preserves context** - resumes from the last manually selected image
+- **Smooth handoff** - no interruption or delay in the transition
+
+## Hardware Requirements
+
+### Components
+
+- **Three rotary switches** (6 positions each)
+- **I2C multiplexer** for device communication
+- **LCD display** for status information
+- **Raspberry Pi** or compatible single-board computer
+
+### Connections
 
 - Switches connect via **I2C expanders**
-- LCD on **channel 3**
-- Everything talks through the **multiplexer**
+- LCD operates on **channel 3**
+- All devices communicate through the **multiplexer**
 
-## 📁 File Organization
+## File Structure
 
 ```
 images/
@@ -67,9 +121,9 @@ images/
 └── labels.json   ← Optional descriptive labels
 ```
 
-## 🎨 Labels (Optional)
+## Labels Configuration
 
-Add a `labels.json` file to show nice descriptions:
+Add a `labels.json` file to display descriptive text:
 
 ```json
 {
@@ -79,7 +133,7 @@ Add a `labels.json` file to show nice descriptions:
 }
 ```
 
-## 🚀 Running It
+## Usage
 
 ```bash
 # Fullscreen mode (default)
@@ -88,42 +142,32 @@ python3 on_device_firmware.py
 # Windowed mode (for testing)
 python3 on_device_firmware.py --windowed
 
-# Custom image folder
+# Custom image directory
 python3 on_device_firmware.py --images /path/to/images
 ```
 
-## ⌨️ Controls
+## Controls
 
-- **ESC** - Exit the program
+- **ESC** - Exit the application
 - **F11** - Toggle fullscreen/windowed mode
-- **Move switches** - Change images instantly
+- **Switch movement** - Change displayed images
 
-## 🧠 Smart Features
+## Features
 
-### 💾 Memory Management
+### Memory Management
 
-- **Caches 25 images** for fast loading
-- **Forgets old images** to save memory
-- **Smooth performance** even with lots of images
+- **Caches 25 images** for improved loading performance
+- **LRU eviction** removes least recently used images
+- **Efficient memory usage** maintains smooth operation
 
-### 🛡️ Error Handling
+### Error Handling
 
-- **Missing images** → shows error message
-- **Hardware problems** → keeps working
-- **Graceful shutdown** → cleans up everything
+- **Missing images** display appropriate error messages
+- **Hardware failures** are handled gracefully
+- **Clean shutdown** ensures proper resource cleanup
 
-### ⚡ Performance
+### Performance
 
-- **30 FPS** smooth display
-- **50ms switch polling** for instant response
-- **Thread-safe** - no conflicts between hardware and display
-
-## 🎯 The Magic
-
-This firmware turns your switches into a **magic remote control** for your art gallery! 🎨✨
-
-- **Turn switches** → instantly see different art
-- **Walk away** → enjoy automatic slideshow
-- **Come back** → pick up right where you left off
-
-Perfect for interactive art installations, galleries, or just showing off your digital art collection! 🎭🎪
+- **30 FPS** consistent display refresh rate
+- **50ms switch polling** for responsive control
+- **Thread-safe operation** prevents hardware conflicts
