@@ -1,4 +1,4 @@
-# 🎨 AI Art Box Firmware - How It Works
+# AI Art Box Firmware
 
 ## 🚀 Overview
 
