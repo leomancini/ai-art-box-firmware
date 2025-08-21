@@ -48,7 +48,7 @@ Interactive mode is the primary operating state where user input directly contro
 
 **Display Information:**
 
-- LCD displays "\*\*\* INTER-ACTIVE \*\*\*" on the first line
+- LCD displays `\*\*\* INTER-ACTIVE \*\*\*` on the first line
 - Shows current switch labels or positions on remaining lines
 - Updates instantly to reflect any switch changes
 
@@ -78,7 +78,7 @@ Screensaver mode provides an automated viewing experience when the system is not
 
 **Display Information:**
 
-- LCD displays "\*\*\* SCREEN-SAVER \*\*\*" on the first line
+- LCD displays `\*\*\* SCREEN-SAVER \*\*\*` on the first line
 - Shows labels for the currently displayed image
 - Updates with each image change to maintain context
 
