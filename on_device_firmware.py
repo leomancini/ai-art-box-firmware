@@ -208,8 +208,8 @@ class SwitchController:
                 
                 self.lcd.clear()
                 
-                # Center the initialization message
-                self.lcd.cursor_pos = (1, 0)
+                # Put the initialization message on the first line
+                self.lcd.cursor_pos = (0, 0)
                 self.lcd.write_string("*** INITIALIZING ***")
                 
             return True
@@ -245,13 +245,14 @@ class SwitchController:
                         self.lcd.cursor_pos = (i + 1, 0)
                         self.lcd.write_string(text[:20])  # Truncate to LCD width
                 else:
-                    # Show switch positions (6-position switches only)
+                    # Show switch positions as 0-5 (6-position switches only)
+                    coords = self.get_image_coordinates()
                     self.lcd.cursor_pos = (1, 0)
-                    self.lcd.write_string(f"SW1: Pos {self.switch_positions['SWITCH_1']}")
+                    self.lcd.write_string(f"SW1: Pos {coords[0]}")
                     self.lcd.cursor_pos = (2, 0)
-                    self.lcd.write_string(f"SW2: Pos {self.switch_positions['SWITCH_2']}")
+                    self.lcd.write_string(f"SW2: Pos {coords[1]}")
                     self.lcd.cursor_pos = (3, 0)
-                    self.lcd.write_string(f"SW3: Pos {self.switch_positions['SWITCH_3']}")
+                    self.lcd.write_string(f"SW3: Pos {coords[2]}")
                 
             return True
         except Exception as e:
@@ -283,11 +284,11 @@ class SwitchController:
                         self.lcd.write_string(text[:20])
                 else:
                     self.lcd.cursor_pos = (1, 0)
-                    self.lcd.write_string(f"SW1: Pos {coords[0] + 1}")
+                    self.lcd.write_string(f"SW1: Pos {coords[0]}")
                     self.lcd.cursor_pos = (2, 0)
-                    self.lcd.write_string(f"SW2: Pos {coords[1] + 1}")
+                    self.lcd.write_string(f"SW2: Pos {coords[1]}")
                     self.lcd.cursor_pos = (3, 0)
-                    self.lcd.write_string(f"SW3: Pos {coords[2] + 1}")
+                    self.lcd.write_string(f"SW3: Pos {coords[2]}")
             return True
         except Exception as e:
             print(f"LCD update error: {e}")
@@ -341,8 +342,8 @@ class SwitchController:
         """Get current image coordinates (0-5) based on switch positions (1-6)"""
         return (
             self.switch_positions["SWITCH_1"] - 1,  # Convert 1-6 to 0-5
-            self.switch_positions["SWITCH_2"] - 1,
-            self.switch_positions["SWITCH_3"] - 1
+            self.switch_positions["SWITCH_2"] - 1,  # Convert 1-6 to 0-5
+            5 - (self.switch_positions["SWITCH_3"] - 1)  # Reverse: 1->5, 2->4, 3->3, 4->2, 5->1, 6->0
         )
     
     def get_mode_position(self) -> int:
@@ -516,18 +517,18 @@ class AIArtBoxDisplay:
         surface = self._load_surface(image_path)
         
         if surface is None:
-            # No crossfade for missing images; render fallback text
-            message = f"Missing: {image_path.name}"
+            # No crossfade for missing images; render fallback text with mode directory
+            relative_path = image_path.relative_to(self.base_images_directory)
+            message = f"Missing: {relative_path}"
             text_surface = self.font.render(message, True, (255, 255, 255))
             rect = text_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(text_surface, rect)
             
-            pos_message = f"Switches: {self.switch_controller.switch_positions['SWITCH_1']}-{self.switch_controller.switch_positions['SWITCH_2']}-{self.switch_controller.switch_positions['SWITCH_3']}"
+            coords = self.switch_controller.get_image_coordinates()
+            pos_message = f"Switches: {coords[0]}-{coords[1]}-{coords[2]}"
             pos_surface = self.font.render(pos_message, True, (255, 255, 255))
             pos_rect = pos_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 60))
             self.screen.blit(pos_surface, pos_rect)
-            
-            self._draw_labels_overlay(self.current_coords)
             
             pygame.display.flip()
             # Do not update last surface on missing image
