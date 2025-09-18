@@ -235,10 +235,11 @@ class SwitchController:
                 
                 if self.labels:
                     # Show descriptive labels for 6-position switches
+                    # Note: 3rd switch labels are reversed to match coordinate mapping
                     labels_text = [
                         self.labels['first'][self.switch_positions['SWITCH_1'] - 1],
                         self.labels['second'][self.switch_positions['SWITCH_2'] - 1], 
-                        self.labels['third'][self.switch_positions['SWITCH_3'] - 1],
+                        self.labels['third'][5 - (self.switch_positions['SWITCH_3'] - 1)],  # Reversed
                     ]
                     
                     for i, text in enumerate(labels_text):
@@ -274,6 +275,7 @@ class SwitchController:
                 self.lcd.write_string("*** SCREEN-SAVER ***")
                 
                 if self.labels:
+                    # Note: coords[2] is already reversed from get_image_coordinates()
                     lines = [
                         self.labels['first'][coords[0]],
                         self.labels['second'][coords[1]],
@@ -561,6 +563,7 @@ class AIArtBoxDisplay:
         try:
             labels = self.switch_controller.labels
             if labels and all(k in labels for k in ("first", "second", "third")):
+                # Note: coords[2] is already reversed from get_image_coordinates()
                 lines = [
                     labels['first'][coords[0]],
                     labels['second'][coords[1]],
