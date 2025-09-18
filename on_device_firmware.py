@@ -21,6 +21,11 @@ import json
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List, Any
 import smbus
+try:
+    import RPi.GPIO as GPIO
+except ImportError:
+    print("Warning: RPi.GPIO not available. 3-way switch will not work.")
+    GPIO = None
 
 import pygame
 from RPLCD.i2c import CharLCD
@@ -29,29 +34,90 @@ from RPLCD.i2c import CharLCD
 bus = smbus.SMBus(1)
 channel_lock = threading.Lock()
 
+class ThreeWaySwitch:
+    """Handles reading a 3-way switch connected to GPIO pins"""
+    
+    def __init__(self, pin_a: int = 24, pin_b: int = 25):
+        """Initialize 3-way switch on specified GPIO pins
+        
+        Args:
+            pin_a: GPIO pin for first switch position
+            pin_b: GPIO pin for second switch position
+        """
+        self.pin_a = pin_a
+        self.pin_b = pin_b
+        self.current_position = 0  # 0, 1, or 2
+        
+        if GPIO is not None:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.pin_a, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.setup(self.pin_b, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            print(f"3-way switch initialized on GPIO pins {pin_a} and {pin_b}")
+        else:
+            print("3-way switch disabled - RPi.GPIO not available")
+    
+    def read_position(self) -> int:
+        """Read current switch position (0, 1, or 2)
+        
+        Returns:
+            0: Neither pin active (position 1)
+            1: Pin A active (position 2) 
+            2: Pin B active (position 3)
+        """
+        if GPIO is None:
+            return 0
+        
+        try:
+            pin_a_state = not GPIO.input(self.pin_a)  # Invert because we use pull-up
+            pin_b_state = not GPIO.input(self.pin_b)  # Invert because we use pull-up
+            
+            if pin_a_state and not pin_b_state:
+                self.current_position = 1
+            elif pin_b_state and not pin_a_state:
+                self.current_position = 2
+            else:
+                self.current_position = 0  # Default/neutral position
+            
+            return self.current_position
+        except Exception as e:
+            print(f"Error reading 3-way switch: {e}")
+            return 0
+    
+    def cleanup(self):
+        """Clean up GPIO resources"""
+        if GPIO is not None:
+            try:
+                GPIO.cleanup([self.pin_a, self.pin_b])
+            except Exception:
+                pass
+
 def load_labels_file(path: Path) -> Optional[Dict[str, List[str]]]:
     """Load labels from JSON file"""
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # Validate structure
+        # Validate structure - now includes 3-way switch options
+        required_keys = ["first", "second", "third", "mode"]
         if isinstance(data, dict) and all(
-            key in data and isinstance(data[key], list) and len(data[key]) == 6
-            for key in ["first", "second", "third"]
-        ):
+            key in data and isinstance(data[key], list) 
+            for key in required_keys
+        ) and all(
+            len(data[key]) == 6 for key in ["first", "second", "third"]
+        ) and len(data.get("mode", [])) == 3:
             return data
         else:
             print(f"Invalid labels file structure in {path}")
+            print("Expected: 'first', 'second', 'third' (6 items each), 'mode' (3 items)")
             return None
     except Exception as e:
         print(f"Error loading labels file {path}: {e}")
         return None
 
 class SwitchController:
-    """Handles reading the three 6-position switches via I2C multiplexer"""
+    """Handles reading the three 6-position switches via I2C multiplexer and a 3-way mode switch"""
     
-    def __init__(self, labels_file: Optional[Path] = None):
+    def __init__(self, labels_file: Optional[Path] = None, three_way_pin_a: int = 24, three_way_pin_b: int = 25):
         # Switch device configuration from switch_monitor.py
         self.devices = [
             {"name": "SWITCH_3", "channel": 0, "address": 0x24, "type": "Switch Controller"},
@@ -63,6 +129,11 @@ class SwitchController:
         self.switch_positions = {"SWITCH_1": 1, "SWITCH_2": 1, "SWITCH_3": 1}
         self.last_values = {}
         self.running = True
+        
+        # Initialize 3-way mode switch
+        self.three_way_switch = ThreeWaySwitch(three_way_pin_a, three_way_pin_b)
+        self.mode_position = 0  # 0, 1, or 2
+        self.last_mode_position = 0
         
         # Load labels
         self.labels = None
@@ -151,7 +222,7 @@ class SwitchController:
             return False
     
     def _update_lcd_display(self):
-        """Update LCD with current switch labels"""
+        """Update LCD with current switch labels including mode switch"""
         try:
             if self.lcd is None:
                 return False
@@ -162,12 +233,16 @@ class SwitchController:
                 
                 self.lcd.clear()
                 
-                # Line 1: Title
+                # Line 1: Title with mode indicator
+                mode_label = "INTER-ACTIVE"
+                if self.labels and "mode" in self.labels:
+                    mode_label = self.labels['mode'][self.mode_position][:12]  # Truncate for title
+                
                 self.lcd.cursor_pos = (0, 0)
-                self.lcd.write_string("*** INTER-ACTIVE ***")
+                self.lcd.write_string(f"*** {mode_label} ***")
                 
                 if self.labels:
-                    # Show descriptive labels
+                    # Show descriptive labels for 6-position switches
                     labels_text = [
                         self.labels['first'][self.switch_positions['SWITCH_1'] - 1],
                         self.labels['second'][self.switch_positions['SWITCH_2'] - 1], 
@@ -180,11 +255,9 @@ class SwitchController:
                 else:
                     # Show switch positions
                     self.lcd.cursor_pos = (1, 0)
-                    self.lcd.write_string(f"SW1: Pos {self.switch_positions['SWITCH_1']}")
+                    self.lcd.write_string(f"SW1:{self.switch_positions['SWITCH_1']} SW2:{self.switch_positions['SWITCH_2']} SW3:{self.switch_positions['SWITCH_3']}")
                     self.lcd.cursor_pos = (2, 0)
-                    self.lcd.write_string(f"SW2: Pos {self.switch_positions['SWITCH_2']}")
-                    self.lcd.cursor_pos = (3, 0)
-                    self.lcd.write_string(f"SW3: Pos {self.switch_positions['SWITCH_3']}")
+                    self.lcd.write_string(f"Mode: Position {self.mode_position + 1}")
                 
             return True
         except Exception as e:
@@ -200,9 +273,15 @@ class SwitchController:
                 if not self.select_channel(3):
                     return False
                 self.lcd.clear()
-                # Line 1: Title
+                
+                # Line 1: Title with mode indicator
+                mode_label = "SCREEN-SAVER"
+                if self.labels and "mode" in self.labels:
+                    mode_label = f"{self.labels['mode'][self.mode_position][:8]} SCR"  # Truncate for screensaver
+                
                 self.lcd.cursor_pos = (0, 0)
-                self.lcd.write_string("*** SCREEN-SAVER ***")
+                self.lcd.write_string(f"*** {mode_label} ***")
+                
                 if self.labels:
                     lines = [
                         self.labels['first'][coords[0]],
@@ -214,18 +293,16 @@ class SwitchController:
                         self.lcd.write_string(text[:20])
                 else:
                     self.lcd.cursor_pos = (1, 0)
-                    self.lcd.write_string(f"SW1: Pos {coords[0] + 1}")
+                    self.lcd.write_string(f"SW1:{coords[0] + 1} SW2:{coords[1] + 1} SW3:{coords[2] + 1}")
                     self.lcd.cursor_pos = (2, 0)
-                    self.lcd.write_string(f"SW2: Pos {coords[1] + 1}")
-                    self.lcd.cursor_pos = (3, 0)
-                    self.lcd.write_string(f"SW3: Pos {coords[2] + 1}")
+                    self.lcd.write_string(f"Mode: Position {self.mode_position + 1}")
             return True
         except Exception as e:
             print(f"LCD update error: {e}")
             return False
 
     def _monitor_switches(self):
-        """Monitor all switches in background thread"""
+        """Monitor all switches including 3-way mode switch in background thread"""
         print("Starting switch monitoring...")
         
         # Don't immediately update LCD - let initialization message show
@@ -234,6 +311,7 @@ class SwitchController:
         while self.running:
             changes_detected = False
             
+            # Monitor 6-position switches via I2C
             with channel_lock:
                 for dev in self.devices:
                     data = self.read_device(dev['channel'], dev['address'])
@@ -254,6 +332,14 @@ class SwitchController:
                                 self.switch_positions[dev['name']] = position
                                 changes_detected = True
             
+            # Monitor 3-way mode switch
+            new_mode_position = self.three_way_switch.read_position()
+            if new_mode_position != self.last_mode_position:
+                self.mode_position = new_mode_position
+                self.last_mode_position = new_mode_position
+                changes_detected = True
+                print(f"Mode switch changed to position {new_mode_position}")
+            
             # Update LCD when changes detected
             if changes_detected:
                 self._update_lcd_display()
@@ -268,9 +354,15 @@ class SwitchController:
             self.switch_positions["SWITCH_3"] - 1
         )
     
+    def get_mode_position(self) -> int:
+        """Get current 3-way mode switch position (0, 1, or 2)"""
+        return self.mode_position
+    
     def stop(self):
         """Stop the switch monitoring"""
         self.running = False
+        # Clean up 3-way switch GPIO
+        self.three_way_switch.cleanup()
         # Clear LCD on exit
         try:
             if self.lcd is not None:
