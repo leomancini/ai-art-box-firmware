@@ -37,7 +37,7 @@ channel_lock = threading.Lock()
 class ThreeWaySwitch:
     """Handles reading a 3-way switch connected to GPIO pins"""
     
-    def __init__(self, pin_a: int = 24, pin_b: int = 25):
+    def __init__(self, pin_a: int = 0, pin_b: int = 5):
         """Initialize 3-way switch on specified GPIO pins
         
         Args:
@@ -117,7 +117,7 @@ def load_labels_file(path: Path) -> Optional[Dict[str, List[str]]]:
 class SwitchController:
     """Handles reading the three 6-position switches via I2C multiplexer and a 3-way mode switch"""
     
-    def __init__(self, labels_file: Optional[Path] = None, three_way_pin_a: int = 24, three_way_pin_b: int = 25):
+    def __init__(self, labels_file: Optional[Path] = None, three_way_pin_a: int = 0, three_way_pin_b: int = 5):
         # Switch device configuration from switch_monitor.py
         self.devices = [
             {"name": "SWITCH_3", "channel": 0, "address": 0x24, "type": "Switch Controller"},
