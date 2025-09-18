@@ -222,7 +222,7 @@ class SwitchController:
             return False
     
     def _update_lcd_display(self):
-        """Update LCD with current switch labels including mode switch"""
+        """Update LCD with current switch labels"""
         try:
             if self.lcd is None:
                 return False
@@ -233,13 +233,9 @@ class SwitchController:
                 
                 self.lcd.clear()
                 
-                # Line 1: Title with mode indicator
-                mode_label = "INTER-ACTIVE"
-                if self.labels and "mode" in self.labels:
-                    mode_label = self.labels['mode'][self.mode_position][:12]  # Truncate for title
-                
+                # Line 1: Title (back to original)
                 self.lcd.cursor_pos = (0, 0)
-                self.lcd.write_string(f"*** {mode_label} ***")
+                self.lcd.write_string("*** INTER-ACTIVE ***")
                 
                 if self.labels:
                     # Show descriptive labels for 6-position switches
@@ -253,11 +249,13 @@ class SwitchController:
                         self.lcd.cursor_pos = (i + 1, 0)
                         self.lcd.write_string(text[:20])  # Truncate to LCD width
                 else:
-                    # Show switch positions
+                    # Show switch positions (6-position switches only)
                     self.lcd.cursor_pos = (1, 0)
-                    self.lcd.write_string(f"SW1:{self.switch_positions['SWITCH_1']} SW2:{self.switch_positions['SWITCH_2']} SW3:{self.switch_positions['SWITCH_3']}")
+                    self.lcd.write_string(f"SW1: Pos {self.switch_positions['SWITCH_1']}")
                     self.lcd.cursor_pos = (2, 0)
-                    self.lcd.write_string(f"Mode: Position {self.mode_position + 1}")
+                    self.lcd.write_string(f"SW2: Pos {self.switch_positions['SWITCH_2']}")
+                    self.lcd.cursor_pos = (3, 0)
+                    self.lcd.write_string(f"SW3: Pos {self.switch_positions['SWITCH_3']}")
                 
             return True
         except Exception as e:
@@ -274,13 +272,9 @@ class SwitchController:
                     return False
                 self.lcd.clear()
                 
-                # Line 1: Title with mode indicator
-                mode_label = "SCREEN-SAVER"
-                if self.labels and "mode" in self.labels:
-                    mode_label = f"{self.labels['mode'][self.mode_position][:8]} SCR"  # Truncate for screensaver
-                
+                # Line 1: Title (back to original)
                 self.lcd.cursor_pos = (0, 0)
-                self.lcd.write_string(f"*** {mode_label} ***")
+                self.lcd.write_string("*** SCREEN-SAVER ***")
                 
                 if self.labels:
                     lines = [
@@ -293,9 +287,11 @@ class SwitchController:
                         self.lcd.write_string(text[:20])
                 else:
                     self.lcd.cursor_pos = (1, 0)
-                    self.lcd.write_string(f"SW1:{coords[0] + 1} SW2:{coords[1] + 1} SW3:{coords[2] + 1}")
+                    self.lcd.write_string(f"SW1: Pos {coords[0] + 1}")
                     self.lcd.cursor_pos = (2, 0)
-                    self.lcd.write_string(f"Mode: Position {self.mode_position + 1}")
+                    self.lcd.write_string(f"SW2: Pos {coords[1] + 1}")
+                    self.lcd.cursor_pos = (3, 0)
+                    self.lcd.write_string(f"SW3: Pos {coords[2] + 1}")
             return True
         except Exception as e:
             print(f"LCD update error: {e}")
@@ -377,7 +373,7 @@ class AIArtBoxDisplay:
     """Fullscreen pygame display controlled by switches"""
     
     def __init__(self, images_directory: Path, fullscreen: bool = True, labels_file: Optional[Path] = None):
-        self.images_directory = images_directory
+        self.base_images_directory = images_directory
         self.fullscreen = fullscreen
         
         # Initialize switch controller with labels
@@ -385,6 +381,10 @@ class AIArtBoxDisplay:
         
         # Current image coordinates
         self.current_coords = (0, 0, 0)
+        
+        # Track current mode for directory switching
+        self.current_mode = 0
+        self.last_mode = -1
         
         # Screensaver state
         self.mode = "screensaver"  # start in screensaver mode as requested
@@ -431,17 +431,38 @@ class AIArtBoxDisplay:
         print(f"Display initialized: {self.screen_width}x{self.screen_height}")
         print(f"Fullscreen: {fullscreen}")
         print(f"Image cache limit: {self.max_cache_size} images")
+        print(f"Base images directory: {self.base_images_directory}")
+        
+        # Check for mode directories
+        for i in range(3):
+            mode_dir = self.base_images_directory / f"mode-{i + 1}"
+            if mode_dir.exists():
+                print(f"✓ Mode {i + 1} directory found: {mode_dir}")
+            else:
+                print(f"⚠ Mode {i + 1} directory missing: {mode_dir}")
         
         # Initial render
         self._render()
+
+    def _get_current_images_directory(self) -> Path:
+        """Get the current images directory based on mode switch position"""
+        mode_position = self.switch_controller.get_mode_position()
+        mode_dir = self.base_images_directory / f"mode-{mode_position + 1}"
+        
+        # Fall back to base directory if mode directory doesn't exist
+        if mode_dir.exists():
+            return mode_dir
+        else:
+            print(f"Warning: Mode directory {mode_dir} doesn't exist, using base directory")
+            return self.base_images_directory
 
     def _current_filename(self) -> str:
         """Generate filename based on current coordinates"""
         return f"{self.current_coords[0]}-{self.current_coords[1]}-{self.current_coords[2]}.jpeg"
 
     def _current_image_path(self) -> Path:
-        """Get path to current image"""
-        return self.images_directory / self._current_filename()
+        """Get path to current image based on current mode directory"""
+        return self._get_current_images_directory() / self._current_filename()
 
     def _load_surface(self, path: Path) -> Optional[pygame.Surface]:
         """Load and cache image surface with LRU eviction"""
@@ -609,6 +630,17 @@ class AIArtBoxDisplay:
                     self._render()
             
             now = time.time()
+            
+            # Check if mode switch changed (different image set)
+            new_mode = self.switch_controller.get_mode_position()
+            if new_mode != self.current_mode:
+                print(f"Mode changed from {self.current_mode} to {new_mode}")
+                self.current_mode = new_mode
+                # Clear cache when switching modes to avoid showing wrong images
+                self._clear_cache()
+                # Force re-render with new directory
+                self._render()
+            
             # Check if switch positions changed (user interaction)
             new_switch_coords = self.switch_controller.get_image_coordinates()
             if new_switch_coords != self._last_switch_coords:
