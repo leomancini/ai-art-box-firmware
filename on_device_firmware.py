@@ -324,15 +324,14 @@ class SwitchController:
                                 self.switch_positions[dev['name']] = position
                                 changes_detected = True
             
-            # Monitor 3-way mode switch
+            # Monitor 3-way mode switch (does not trigger LCD updates)
             new_mode_position = self.three_way_switch.read_position()
             if new_mode_position != self.last_mode_position:
                 self.mode_position = new_mode_position
                 self.last_mode_position = new_mode_position
-                changes_detected = True
                 print(f"Mode switch changed to position {new_mode_position}")
             
-            # Update LCD when changes detected
+            # Update LCD only when 6-position switches change
             if changes_detected:
                 self._update_lcd_display()
             
