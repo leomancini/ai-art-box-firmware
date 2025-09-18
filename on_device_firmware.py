@@ -97,18 +97,14 @@ def load_labels_file(path: Path) -> Optional[Dict[str, List[str]]]:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # Validate structure - now includes 3-way switch options
-        required_keys = ["first", "second", "third", "mode"]
+        # Validate structure
         if isinstance(data, dict) and all(
-            key in data and isinstance(data[key], list) 
-            for key in required_keys
-        ) and all(
-            len(data[key]) == 6 for key in ["first", "second", "third"]
-        ) and len(data.get("mode", [])) == 3:
+            key in data and isinstance(data[key], list) and len(data[key]) == 6
+            for key in ["first", "second", "third"]
+        ):
             return data
         else:
             print(f"Invalid labels file structure in {path}")
-            print("Expected: 'first', 'second', 'third' (6 items each), 'mode' (3 items)")
             return None
     except Exception as e:
         print(f"Error loading labels file {path}: {e}")
@@ -447,7 +443,13 @@ class AIArtBoxDisplay:
     def _get_current_images_directory(self) -> Path:
         """Get the current images directory based on mode switch position"""
         mode_position = self.switch_controller.get_mode_position()
-        mode_dir = self.base_images_directory / f"mode-{mode_position + 1}"
+        
+        # Map switch positions to mode directories:
+        # Position 1 → mode-1, Position 0 → mode-2, Position 2 → mode-3
+        position_to_mode = {1: 1, 0: 2, 2: 3}
+        mode_number = position_to_mode.get(mode_position, 1)  # Default to mode-1
+        
+        mode_dir = self.base_images_directory / f"mode-{mode_number}"
         
         # Fall back to base directory if mode directory doesn't exist
         if mode_dir.exists():
@@ -631,17 +633,21 @@ class AIArtBoxDisplay:
             
             now = time.time()
             
-            # Check if mode switch changed (different image set)
+            # Check if mode switch changed (different image set) - this does NOT affect screensaver
             new_mode = self.switch_controller.get_mode_position()
             if new_mode != self.current_mode:
-                print(f"Mode changed from {self.current_mode} to {new_mode}")
+                # Map positions to mode directories for logging
+                position_to_mode = {1: 1, 0: 2, 2: 3}
+                old_mode_dir = position_to_mode.get(self.current_mode, 1)
+                new_mode_dir = position_to_mode.get(new_mode, 1)
+                print(f"Mode switch: Position {self.current_mode} (mode-{old_mode_dir}) → Position {new_mode} (mode-{new_mode_dir})")
                 self.current_mode = new_mode
                 # Clear cache when switching modes to avoid showing wrong images
                 self._clear_cache()
                 # Force re-render with new directory
                 self._render()
             
-            # Check if switch positions changed (user interaction)
+            # Check if 6-position switches changed (user interaction for screensaver)
             new_switch_coords = self.switch_controller.get_image_coordinates()
             if new_switch_coords != self._last_switch_coords:
                 # Skip the first switch reading to avoid immediate screensaver exit
@@ -651,7 +657,7 @@ class AIArtBoxDisplay:
                 else:
                     # Update last seen switch state
                     self._last_switch_coords = new_switch_coords
-                    # Any movement exits screensaver and updates interaction timestamp
+                    # Only 6-position switch movement affects screensaver/interaction timing
                     self.last_interaction_ts = now
                     was_in_screensaver = (self.mode != "normal")
                     if self.mode != "normal":
